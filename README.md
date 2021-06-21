@@ -5,7 +5,7 @@ Most core features work (private rooms are buggy). Not tested at scale. Not prod
 
 To run server, first run setup.py to create databases, then run the main.py
 
-✅ Search users files /n
+✅ Search users files
 
 ✅ PM users
 
