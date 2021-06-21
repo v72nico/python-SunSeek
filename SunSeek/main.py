@@ -5,7 +5,7 @@ from twisted.internet.task import LoopingCall
 from db import login_user, user_exist, save_private_message, get_saved_private_messages, delete_private_message
 from decode import parse_data
 from encode import encode_data
-from utils import get_time, rand_int, get_random_lst_items, is_user_connectable, print_exception
+from utils import get_time, rand_int, get_random_lst_items, is_user_connectable
 from rooms import Chatroom
 
 
@@ -86,7 +86,6 @@ class slskProtocol(Protocol):
         except Exception:
             pass
 
-
         print(reason)
 
     def dataReceived(self, data):
@@ -162,7 +161,6 @@ class slskProtocol(Protocol):
                     dispatcher[str(msg.msg_code)](msg)
                 except Exception as e:
                     print(f"Error responding to msg. Msg Code: {msg.msg_code}, Error: ", e)
-                    print_exception()
 
     def login(self, msg):
         self.username = msg.username
