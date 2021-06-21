@@ -71,18 +71,18 @@ class slskProtocol(Protocol):
                 # otherwise tell other users in the room somebody left
                 else:
                     send_msg = encode_data(17, room, self.username)
-                    for user in self.factory.rooms[room].users:
-                        self.factory.users[user].transport.write(send_msg)
+                    for name in self.factory.rooms[room].users:
+                        self.factory.users[name].transport.write(send_msg)
         except Exception:
             pass
         try:
-            for user in self.added_users:
-                self.factory.users[user].added_me.remove(self.username)
+            for name in self.added_users:
+                self.factory.users[name].added_me.remove(self.username)
         except Exception:
             pass
         try:
-            for user in self.added_me:
-                self.factory.users[user].added_users.remove(self.username)
+            for name in self.added_me:
+                self.factory.users[name].added_users.remove(self.username)
         except Exception:
             pass
 
@@ -258,14 +258,14 @@ class slskProtocol(Protocol):
             room = self.factory.rooms[msg.room]
             if self.username in room.users:
                 send_msg = encode_data(13, msg.room, self.username, msg.message)
-                for user in room.users:
-                    self.factory.users[user].transport.write(send_msg)
+                for name in room.users:
+                    self.factory.users[name].transport.write(send_msg)
 
                 # send to public chatroom users
                 if room.private == False:
                     send_msg = (152, msg.room, self.username, msg.message)
-                    for user in self.factory.public_room_users:
-                        self.factory.users[user].transport.write(send_msg)
+                    for name in self.factory.public_room_users:
+                        self.factory.users[name].transport.write(send_msg)
 
     def join_room(self, msg):
         # If room already exists
@@ -302,9 +302,9 @@ class slskProtocol(Protocol):
                 self.transport.write(send_msg)
 
                 send_msg = encode_data(16, msg.room, self.username, self.status, self.avgspeed, self.uploadnum, self.files, self.dirs, 1, self.country)
-                for user in room.users:
-                    if user != self.username:
-                        self.factory.users[user].transport.write(send_msg)
+                for name in room.users:
+                    if name != self.username:
+                        self.factory.users[name].transport.write(send_msg)
 
             if room.private == True:
                 if self.username in room.allowed_users:
@@ -336,9 +336,9 @@ class slskProtocol(Protocol):
                     self.transport.write(send_msg)
 
                     send_msg = encode_data(16, msg.room, self.username, self.status, self.avgspeed, self.uploadnum, self.files, self.dirs, 1, self.country)
-                    for user in room.users:
-                        if user != self.username:
-                            self.factory.users[user].transport.write(send_msg)
+                    for name in room.users:
+                        if name != self.username:
+                            self.factory.users[name].transport.write(send_msg)
 
                     self.send_private_room_update(msg.room)
 
@@ -376,8 +376,8 @@ class slskProtocol(Protocol):
             # otherwise tell other users in the room somebody left
             else:
                 send_msg = encode_data(17, msg.room, self.username)
-                for user in room.users:
-                    self.factory.users[user].transport.write(send_msg)
+                for name in room.users:
+                    self.factory.users[name].transport.write(send_msg)
 
             send_msg = encode_data(15, msg.room)
             self.transport.write(send_msg)
@@ -404,9 +404,9 @@ class slskProtocol(Protocol):
 
     def file_search(self, msg):
         send_msg = encode_data(26, self.username, msg.ticket, msg.query)
-        for instance in self.factory.users.values():
-            if instance != self:
-                instance.transport.write(send_msg)
+        for user in self.factory.users.values():
+            if user != self:
+                user.transport.write(send_msg)
 
     def set_status(self, msg):
         self.status = msg.status
@@ -529,14 +529,14 @@ class slskProtocol(Protocol):
             if msg.ticker != '':
                 room.tickers[self.username] = msg.ticker
                 send_msg = encode_data(114, msg.room, self.username, msg.ticker)
-                for user in room.users:
-                    if user != self.username:
-                        self.factory.users[user].transport.write(send_msg)
+                for name in room.users:
+                    if name != self.username:
+                        self.factory.users[name].transport.write(send_msg)
             if msg.ticker == '':
                 send_msg = encode_data(115, msg.room, self.username)
-                for user in room.users:
-                    if user != self.username:
-                        self.factory.users[user].transport.write(send_msg)
+                for name in room.users:
+                    if name != self.username:
+                        self.factory.users[name].transport.write(send_msg)
 
     def add_thing_i_hate(self, msg):
         self.hates.append(msg.item)
@@ -548,10 +548,9 @@ class slskProtocol(Protocol):
         if msg.room in self.factory.rooms:
             room = self.factory.rooms[msg.room]
             send_msg = encode_data(26, self.username, msg.ticket, msg.query)
-            for user in room.users:
-                instance = self.factory.users[user]
-                if instance != self:
-                    instance.transport.write(send_msg)
+            for name in room.users:
+                if name != self.username:
+                    self.factory.users[name].transport.write(send_msg)
 
     def send_upload_speed(self, msg):
         self.avgspeed = msg.speed
@@ -612,9 +611,9 @@ class slskProtocol(Protocol):
                 self.transport.write(send_msg)
 
                 send_msg = encode_data(16, msg.room, user.username, user.status, user.avgspeed, user.uploadnum, user.files, user.dirs, 1, user.country)
-                for user in room.users:
-                    if user != msg.username:
-                        self.factory.users[user].transport.write(send_msg)
+                for name in room.users:
+                    if name != msg.username:
+                        self.factory.users[name].transport.write(send_msg)
 
                 self.send_private_room_update(msg.room)
 
@@ -657,9 +656,9 @@ class slskProtocol(Protocol):
                 del self.factory.rooms[msg.room]
             else:
                 send_msg = encode_data(17, msg.room, self.username)
-                for user in room.users:
-                    if user != self.username:
-                        user.transport.write(send_msg)
+                for name in room.users:
+                    if name != self.username:
+                        self.factory.users[name].transport.write(send_msg)
 
                 self.send_private_room_update(msg.room)
 
@@ -725,9 +724,9 @@ class slskProtocol(Protocol):
     def message_users(self, msg):
         # TODO Save messages for later
         send_msg = encode_data(22, rand_int(), get_time(), self.username, msg.message, True)
-        for user in msg.username_lst:
-            if user in self.factory.users:
-                self.factory.users[user].transport.write(send_msg)
+        for name in msg.username_lst:
+            if name in self.factory.users:
+                self.factory.users[name].transport.write(send_msg)
 
     def join_public_room(self, msg):
         if self.username not in self.factory.public_room_users:
