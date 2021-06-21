@@ -242,7 +242,7 @@ class Decode_Data():
         self.username = self.unpack_str()
 
 
-def parse_data(data):
+def parse_data(data, max_msg_size):
     """Seperates messages using message length into each message and calls
      decode_data function.
 
@@ -264,11 +264,12 @@ def parse_data(data):
 
     decoded_msgs = []
     for msg in msgs:
-        try:
-            decoded_msg = Decode_Data(msg)
-            decoded_msgs.append(decoded_msg)
-        except Exception as e:
-            print('Error on msg decoding', e)
-            print(msg)
+        if len(msg) < max_msg_size:
+            try:
+                decoded_msg = Decode_Data(msg)
+                decoded_msgs.append(decoded_msg)
+            except Exception as e:
+                print('Error on msg decoding', e)
+                print(msg)
 
     return decoded_msgs

@@ -7,6 +7,7 @@ from decode import parse_data
 from encode import encode_data
 from utils import get_time, rand_int, get_random_lst_items, is_user_connectable
 from rooms import Chatroom
+from config import get_port, get_config_data
 
 
 class slskProtocol(Protocol):
@@ -24,7 +25,7 @@ class slskProtocol(Protocol):
         self.obfuscated_port = 2235
         self.privileged = False
         self.added_me = []
-        self.added_users = [] # TODO
+        self.added_users = []
         self.status = 0
         self.avgspeed = 0
         self.uploadnum = 0
@@ -89,7 +90,7 @@ class slskProtocol(Protocol):
         print(reason)
 
     def dataReceived(self, data):
-        msgs = parse_data(data)
+        msgs = parse_data(data, self.factory.settings['max_msg_size'])
         for msg in msgs:
             print(self.username)
             print(msg.__dict__)
@@ -141,12 +142,11 @@ class slskProtocol(Protocol):
                         '141': self.private_room_toggle,
                         '142': self.change_password,
                         '143': self.private_room_add_operator,
-                        '144': self.private_room_remove_operator,  # TODO ???
+                        '144': self.private_room_remove_operator,
                         '149': self.message_users,
                         '150': self.join_public_room,
                         '151': self.leave_public_room,
                         '1001': self.cant_connect_to_peer
-
             }
 
             if msg.msg_code == 1:
@@ -163,13 +163,13 @@ class slskProtocol(Protocol):
                     print(f"Error responding to msg. Msg Code: {msg.msg_code}, Error: ", e)
 
     def login(self, msg):
+        # TODO implement private server function
         self.username = msg.username
         self.logged_in = False
         # Trying to keep password temporary by not sticking it user data
         # TODO what if strings too long
-        # TODO looping call if room empty destroy it private rooms!!
         password = msg.password
-        login_result = login_user(self.username, password)
+        login_result = login_user(self.username, password, self.factory.settings['private_server'])
 
         if login_result[0] == 'success':
             # Check if user already logged in and kick if the same user
@@ -182,6 +182,8 @@ class slskProtocol(Protocol):
             # Set privilege
             if login_result[1] > 0:
                 self.privileged = True
+                if self.username not in self.factory.privileged:
+                    self.factory.privileged.append(self.username)
 
             self.logged_in = True
 
@@ -204,6 +206,7 @@ class slskProtocol(Protocol):
             # Argument None in place of where msg normally is
             self.room_list(None)
 
+            self.privileged_users()
 
         elif login_result[0] == 'failure':
             send_msg = encode_data(1, 'Bad Password')
@@ -224,6 +227,7 @@ class slskProtocol(Protocol):
             self.transport.write(send_msg)
 
     def add_user(self, msg):
+        # TODO somethings wrong
         if msg.username in self.factory.users:
             user = self.factory.users[msg.username]
             send_msg = encode_data(5, user.username, True, user.status, user.avgspeed, ['64', user.uploadnum], user.files, user.dirs, user.country)
@@ -249,7 +253,9 @@ class slskProtocol(Protocol):
             user = self.factory.users[msg.username]
             send_msg = encode_data(7, user.username, user.status, user.privileged)
             self.transport.write(send_msg)
-        # TODO if user exists but offline send offline
+        elif user_exist(msg.username):
+            send_msg = encode_data(7, msg.username, 0, False)
+            self.transport.write(send_msg)
 
     def say_chatroom(self, msg):
         if msg.room in self.factory.rooms:
@@ -268,7 +274,6 @@ class slskProtocol(Protocol):
     def join_room(self, msg):
         # If room already exists
         if msg.room in self.factory.rooms:
-            # TODO send ticker state
             room = self.factory.rooms[msg.room]
 
             if room.private == False:
@@ -277,24 +282,7 @@ class slskProtocol(Protocol):
                 if self.username not in room.users:
                     room.users.append(self.username)
 
-                status_lst = []
-                avgspeed_lst = []
-                uploadnum_lst = []
-                files_lst = []
-                dirs_lst = []
-                slotsfree_lst = []
-                country_lst = []
-
-                for name in room.users:
-                    user = self.factory.users[name]
-                    status_lst.append(user.status)
-                    avgspeed_lst.append(user.avgspeed)
-                    uploadnum_lst.append(user.uploadnum)
-                    files_lst.append(user.files)
-                    dirs_lst.append(user.dirs)
-                    # Slotsfree not implemented
-                    slotsfree_lst.append(1)
-                    country_lst.append(user.country)
+                status_lst, avgspeed_lst, uploadnum_lst, files_lst, dirs_lst, slotsfree_lst, country_lst = self.room_user_stats(room)
 
                 send_msg = encode_data(14, msg.room, len(room.users), ['str_lst', room.users], len(room.users), ['int_lst', status_lst], len(room.users), ['user_data_lst', avgspeed_lst, uploadnum_lst, files_lst, dirs_lst], len(room.users), ['int_lst', slotsfree_lst], len(room.users), ['str_lst', country_lst])
                 self.transport.write(send_msg)
@@ -304,6 +292,10 @@ class slskProtocol(Protocol):
                     if name != self.username:
                         self.factory.users[name].transport.write(send_msg)
 
+                username_lst, ticker_lst = self.ticker_state(room)
+                send_msg = encode_data(113, msg.room, len(room.tickers), ['ticker_lst', username_lst, ticker_lst])
+                self.transport.write(send_msg)
+
             if room.private == True:
                 if self.username in room.allowed_users:
                     if msg.room not in self.joined_rooms:
@@ -311,24 +303,7 @@ class slskProtocol(Protocol):
                     if self.username not in room.users:
                         room.users.append(self.username)
 
-                    status_lst = []
-                    avgspeed_lst = []
-                    uploadnum_lst = []
-                    files_lst = []
-                    dirs_lst = []
-                    slotsfree_lst = []
-                    country_lst = []
-
-                    for name in room.users:
-                        user = self.factory.users[name]
-                        status_lst.append(user.status)
-                        avgspeed_lst.append(user.avgspeed)
-                        uploadnum_lst.append(user.uploadnum)
-                        files_lst.append(user.files)
-                        dirs_lst.append(user.dirs)
-                        # Slotsfree not implemented
-                        slotsfree_lst.append(1)
-                        country_lst.append(user.country)
+                    status_lst, avgspeed_lst, uploadnum_lst, files_lst, dirs_lst, slotsfree_lst, country_lst = self.room_user_stats(room)
 
                     send_msg = encode_data(14, msg.room, len(room.users), ['str_lst', room.users], len(room.users), ['int_lst', status_lst], len(room.users), ['user_data_lst', avgspeed_lst, uploadnum_lst, files_lst, dirs_lst], len(room.users), ['int_lst', slotsfree_lst], len(room.users), ['str_lst', country_lst], room.owner, len(room.operators), ['str_lst', room.operators])
                     self.transport.write(send_msg)
@@ -340,13 +315,16 @@ class slskProtocol(Protocol):
 
                     self.send_private_room_update(msg.room)
 
+                    username_lst, ticker_lst = self.ticker_state(room)
+                    send_msg = encode_data(113, msg.room, len(room.tickers), ['ticker_lst', username_lst, ticker_lst])
+                    self.transport.write(send_msg)
+
                 else:
                     send_msg = encode_data(1003, msg.room)
                     self.transport.write(send_msg)
 
         # If room dosent exists
         else:
-            # TODO send ticker state
             try:
                 self.factory.rooms[msg.room] = Chatroom(msg.room, msg.private)
             except AttributeError:
@@ -394,7 +372,7 @@ class slskProtocol(Protocol):
 
         # save message for later if offline
         elif user_exist(msg.username):
-            save_private_message(msg.message, self.username, msg.username, get_time(), rand_int())
+            save_private_message(msg.message, self.username, msg.username, get_time(), rand_int(), self.factory.settings['max_pms'])
 
     def message_acked(self, msg):
         # Acknowledge message deletes past offline private messages
@@ -449,7 +427,6 @@ class slskProtocol(Protocol):
         pass
 
     def room_list(self, msg):
-        # TODO send at startup
         rooms = self.factory.rooms
 
         number_of_users_public = []
@@ -478,11 +455,6 @@ class slskProtocol(Protocol):
                         private_rooms_operator.append(room.name)
 
         send_msg = encode_data(64, len(rooms_public), ['str_lst', rooms_public], len(rooms_public), ['int_lst', number_of_users_public], len(private_rooms_owned), ['str_lst', private_rooms_owned], len(private_rooms_owned), ['int_lst', number_of_users_owned], len(private_rooms_not_owned), ['str_lst', private_rooms_not_owned], len(private_rooms_not_owned), ['int_lst', number_of_users_not_owned], len(private_rooms_operator), ['str_lst', private_rooms_operator])
-        self.transport.write(send_msg)
-
-    def privileged_users(self, msg):
-        privileged = self.factory.privileged
-        send_msg = encode_data(69, len(privileged), ['str_lst', privileged])
         self.transport.write(send_msg)
 
     def have_no_parent(self, msg):
@@ -519,7 +491,6 @@ class slskProtocol(Protocol):
         pass
 
     def room_ticker_set(self, msg):
-        # TODO send ticker state
         if msg.room in self.factory.rooms:
             room = self.factory.rooms[msg.room]
             if self.username in room.tickers:
@@ -535,6 +506,11 @@ class slskProtocol(Protocol):
                 for name in room.users:
                     if name != self.username:
                         self.factory.users[name].transport.write(send_msg)
+
+            username_lst, ticker_lst = self.ticker_state(room)
+            send_msg = encode_data(113, msg.room, len(room.tickers), ['ticker_lst', username_lst, ticker_lst])
+            for name in room.users:
+                self.factory.users[name].transport.write(send_msg)
 
     def add_thing_i_hate(self, msg):
         self.hates.append(msg.item)
@@ -572,9 +548,9 @@ class slskProtocol(Protocol):
             room = self.factory.rooms[msg.room]
             # If your owner or operator
             if self.username == room.owner or self.username in room.operators:
-                send_msg = encode_data(139, msg.room)
                 user = self.factory.users[msg.username]
                 if user.private_toggle == True:
+                    send_msg = encode_data(139, msg.room)
                     user.transport.write(send_msg)
                     if msg.username not in room.users:
                         room.users.append(msg.username)
@@ -583,37 +559,20 @@ class slskProtocol(Protocol):
                     if msg.username not in room.allowed_users:
                         room.allowed_users.append(msg.username)
 
-                status_lst = []
-                avgspeed_lst = []
-                uploadnum_lst = []
-                files_lst = []
-                dirs_lst = []
-                slotsfree_lst = []
-                country_lst = []
+                    status_lst, avgspeed_lst, uploadnum_lst, files_lst, dirs_lst, slotsfree_lst, country_lst = self.room_user_stats(room)
 
-                for name in room.users:
-                    user = self.factory.users[name]
-                    status_lst.append(user.status)
-                    avgspeed_lst.append(user.avgspeed)
-                    uploadnum_lst.append(user.uploadnum)
-                    files_lst.append(user.files)
-                    dirs_lst.append(user.dirs)
-                    # Slotsfree not implemented
-                    slotsfree_lst.append(1)
-                    country_lst.append(user.country)
+                    send_msg = encode_data(14, msg.room, len(room.users), ['str_lst', room.users], len(room.users), ['int_lst', status_lst], len(room.users), ['user_data_lst', avgspeed_lst, uploadnum_lst, files_lst, dirs_lst], len(room.users), ['int_lst', slotsfree_lst], len(room.users), ['str_lst', country_lst], room.owner, len(room.operators), ['str_lst', room.operators])
+                    user.transport.write(send_msg)
 
-                send_msg = encode_data(14, msg.room, len(room.users), ['str_lst', room.users], len(room.users), ['int_lst', status_lst], len(room.users), ['user_data_lst', avgspeed_lst, uploadnum_lst, files_lst, dirs_lst], len(room.users), ['int_lst', slotsfree_lst], len(room.users), ['str_lst', country_lst], room.owner, len(room.operators), ['str_lst', room.operators])
-                user.transport.write(send_msg)
+                    send_msg = encode_data(134, msg.room, msg.username)
+                    self.transport.write(send_msg)
 
-                send_msg = encode_data(134, msg.room, msg.username)
-                self.transport.write(send_msg)
+                    send_msg = encode_data(16, msg.room, user.username, user.status, user.avgspeed, user.uploadnum, user.files, user.dirs, 1, user.country)
+                    for name in room.users:
+                        if name != msg.username:
+                            self.factory.users[name].transport.write(send_msg)
 
-                send_msg = encode_data(16, msg.room, user.username, user.status, user.avgspeed, user.uploadnum, user.files, user.dirs, 1, user.country)
-                for name in room.users:
-                    if name != msg.username:
-                        self.factory.users[name].transport.write(send_msg)
-
-                self.send_private_room_update(msg.room)
+                    self.send_private_room_update(msg.room)
 
     def private_room_remove_user(self, msg):
         if msg.room in self.factory.rooms and msg.username in self.factory.users:
@@ -738,6 +697,11 @@ class slskProtocol(Protocol):
         # TODO maybe seperate thread to check firewall status is_user_connectable()
         pass
 
+    def privileged_users(self):
+        privileged = self.factory.privileged
+        send_msg = encode_data(69, len(privileged), ['str_lst', privileged])
+        self.transport.write(send_msg)
+
     def send_stats_update(self):
         for name in self.added_me:
             user = self.factory.users[name]
@@ -779,6 +743,34 @@ class slskProtocol(Protocol):
         send_msg = encode_data(148, room_name, len(room.operators), ['str_lst', room.operators])
         self.factory.users[room.owner].transport.write(send_msg)
 
+    def room_user_stats(self, room):
+        status_lst = []
+        avgspeed_lst = []
+        uploadnum_lst = []
+        files_lst = []
+        dirs_lst = []
+        slotsfree_lst = []
+        country_lst = []
+
+        for name in room.users:
+            user = self.factory.users[name]
+            status_lst.append(user.status)
+            avgspeed_lst.append(user.avgspeed)
+            uploadnum_lst.append(user.uploadnum)
+            files_lst.append(user.files)
+            dirs_lst.append(user.dirs)
+            # Slotsfree not implemented
+            slotsfree_lst.append(1)
+            country_lst.append(user.country)
+
+        return status_lst, avgspeed_lst, uploadnum_lst, files_lst, dirs_lst, slotsfree_lst, country_lst
+
+    def ticker_state(self, room):
+        username_lst = room.tickers.keys()
+        ticker_lst = room.tickers.values()
+
+        return username_lst, ticker_lst
+
 
 class slskFactory(Factory):
     """Factory for slsk_Protocol users"""
@@ -788,13 +780,17 @@ class slskFactory(Factory):
         self.privileged = []
         self.public_room_users = []
         self.want_children = []
-        self.greeting = 'welcome to the server'
+
+        self.settings = get_config_data()
+        self.greeting = self.settings['greeting']
 
     def buildProtocol(self, addr):
-        return slskProtocol(self)
+        if len(self.users) < self.settings['max_users']:
+            return slskProtocol(self)
 
     def manage_privileges(self):
-        # TODO looping call to check and update privilleges and update time remaining in database
+        # TODO looping call to check and update privilleges, and privilege list, and update time remaining in database
+        # send upate of msg code 69
         pass
 
 
@@ -805,4 +801,5 @@ def run_server(port):
 
 
 if __name__ == "__main__":
-    run_server(8143) # Arbitrary port
+    port = get_port()
+    run_server(port)

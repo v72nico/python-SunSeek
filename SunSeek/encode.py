@@ -67,6 +67,14 @@ def pack_user_data_lst(avgspeed_lst, uploadnum_lst, files_lst, dirs_lst):
     return buf
 
 
+def pack_ticker_lst(username_lst, ticker_lst):
+    buf = b''
+    for username, ticker in zip(username_lst, ticker_lst):
+        buf += pack_str(username)
+        buf += pack_str(ticker)
+    return buf
+
+
 def pack_ip(ip):
     # IP with little endian is wierd so I have to reverse the octet
     packed_ip_big_endian = inet_aton(ip)
@@ -100,6 +108,8 @@ def encode_data(msg_code, *args):
                 buf += pack_possible_parents_lst(arg[1], arg[2], arg[3])
             if arg[0] == 'user_data_lst':
                 buf += pack_user_data_lst(arg[1], arg[2], arg[3], arg[4])
+            if arg[0] == 'ticker_lst':
+                buf += pack_ticker_lst(arg[1], arg[2])
         if type(arg) == bool:
             buf += pack_bool(arg)
 

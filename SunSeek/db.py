@@ -42,7 +42,7 @@ def create_chat_db():
 
 #TODO AT SCALE this needs to be a seperate thread with QUEUE all db (Acctually maybe not because twisted is only one thread)
 #TODO dont store passwords in plain text use sha-256
-def login_user(username, password):
+def login_user(username, password, private_server):
     '''Sqlite function for managing signing in and creating new user entrys in the database
 
     If the username does not exist a new entry is created. If the user does exist and the
@@ -58,7 +58,7 @@ def login_user(username, password):
     cur.execute(sql_code, args)
     search_result = cur.fetchone()
 
-    if search_result == None:
+    if search_result == None and private_server == False:
         sql_code = ('''INSERT INTO Users(Username,Password,Privileged)
                     VALUES(?,?,0);''')
         args = (username, password,)
@@ -118,15 +118,21 @@ def get_saved_private_messages(username):
     return pms
 
 
-def save_private_message(message, sender, recipient, timestamp, ID):
+def save_private_message(message, sender, recipient, timestamp, ID, max_pms):
     con = sqlite3.connect('chat.db')
     cur = con.cursor()
 
-    sql_code = ('''INSERT INTO Private_Messages(Message,Sender,Recipient,Timestamp,ID)
-                VALUES(?,?,?,?,?);''')
-    args = (message, sender, recipient, timestamp, ID,)
+    sql_code = ('''SELECT * FROM Private_Messages WHERE Recipient = ?;''')
+    args = (recipient,)
     cur.execute(sql_code, args)
-    con.commit()
+    search_results = cur.fetchall()
+
+    if len(search_results) < max_pms:
+        sql_code = ('''INSERT INTO Private_Messages(Message,Sender,Recipient,Timestamp,ID)
+                    VALUES(?,?,?,?,?);''')
+        args = (message, sender, recipient, timestamp, ID,)
+        cur.execute(sql_code, args)
+        con.commit()
     con.close()
 
 
