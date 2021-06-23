@@ -175,11 +175,11 @@ class Decode_Data():
         self.item = self.unpack_str()
 
     def d_admin_command(self):
-        self.string = self.unpack_str()
+        self.password = self.unpack_str()
         str_number = self.unpack_int()
-        self.str_list = []
+        self.cmd_list = []
         for i in range(0,str_number):
-            self.str_list.append(self.unpack_str())
+            self.cmd_list.append(self.unpack_str())
 
     def d_have_no_parent(self):
         self.have_parents = self.unpack_bool()

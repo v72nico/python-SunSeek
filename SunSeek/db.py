@@ -1,24 +1,23 @@
 import sqlite3
 from utils import get_time
 
-def create_users_db():
-    '''Create username and password database'''
-    con = sqlite3.connect('users.db')
+def create_db():
+    '''Creates database'''
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
     cur.execute('''CREATE TABLE Users (
                 Key INTEGER PRIMARY KEY,
                 Username TEXT UNIQUE NOT NULL,
                 Password TEXT NOT NULL,
-                Privileged INTEGER NOT NULL
+                Privileged INTEGER NOT NULL,
+                Banned INTEGER NOT NULL
     );''')
 
-    con.commit()
-    con.close()
+    cur.execute('''CREATE TABLE Banned_IPs (
+                Key INTEGER PRIMARY KEY,
+                IP TEXT UNIQUE NOT NULL
+    );''')
 
-
-def create_chat_db():
-    con = sqlite3.connect('chat.db')
-    cur = con.cursor()
     cur.execute('''CREATE TABLE Private_Messages (
                 Key INTEGER PRIMARY KEY,
                 Message TEXT NOT NULL,
@@ -37,8 +36,15 @@ def create_chat_db():
 
     );''')
 
+    cur.execute('''CREATE TABLE Banned_Room_Names (
+                Key INTEGER PRIMARY KEY,
+                Room TEXT NOT NULL
+
+    );''')
+
     con.commit()
     con.close()
+
 
 #TODO AT SCALE this needs to be a seperate thread with QUEUE all db (Acctually maybe not because twisted is only one thread)
 #TODO dont store passwords in plain text use sha-256
@@ -50,7 +56,7 @@ def login_user(username, password, private_server):
     match the string 'failure' is sent
     '''
 
-    con = sqlite3.connect('users.db')
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
 
     sql_code = ('''SELECT * FROM Users WHERE Username = ?;''')
@@ -59,8 +65,8 @@ def login_user(username, password, private_server):
     search_result = cur.fetchone()
 
     if search_result == None and private_server == False:
-        sql_code = ('''INSERT INTO Users(Username,Password,Privileged)
-                    VALUES(?,?,0);''')
+        sql_code = ('''INSERT INTO Users(Username,Password,Privileged,Banned)
+                    VALUES(?,?,0,0);''')
         args = (username, password,)
         cur.execute(sql_code, args)
         con.commit()
@@ -69,15 +75,18 @@ def login_user(username, password, private_server):
 
     elif search_result[2] == password:
         con.close()
-        return ['success', search_result[3]]
+        if search_result[4] == 0:
+            return ['success', search_result[3]]
+        if search_result[4] == 1:
+            return ['failure', 'Banned']
 
     elif search_result[2] != password:
         con.close()
-        return ['failure']
+        return ['failure', 'Wrong Password']
 
 
 def user_exist(username):
-    con = sqlite3.connect('users.db')
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
 
     sql_code = ('''SELECT * FROM Users WHERE Username = ?;''')
@@ -94,7 +103,7 @@ def user_exist(username):
 
 
 def get_saved_private_messages(username):
-    con = sqlite3.connect('chat.db')
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
 
     sql_code = ('''SELECT * FROM Private_Messages WHERE Recipient = ?;''')
@@ -119,7 +128,7 @@ def get_saved_private_messages(username):
 
 
 def save_private_message(message, sender, recipient, timestamp, ID, max_pms):
-    con = sqlite3.connect('chat.db')
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
 
     sql_code = ('''SELECT * FROM Private_Messages WHERE Recipient = ?;''')
@@ -137,7 +146,7 @@ def save_private_message(message, sender, recipient, timestamp, ID, max_pms):
 
 
 def delete_private_message(recipient, ID):
-    con = sqlite3.connect('chat.db')
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
 
     sql_code = ('''DELETE FROM Private_Messages WHERE Recipient = ? AND ID = ?;''')
@@ -148,7 +157,7 @@ def delete_private_message(recipient, ID):
 
 
 def save_ticker(username, room, ticker):
-    con = sqlite3.connect('chat.db')
+    con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
 
     sql_code = ('''SELECT * FROM Tickers WHERE Username = ? AND Room = ?;''')
@@ -172,3 +181,105 @@ def save_ticker(username, room, ticker):
         cur.execute(sql_code, args)
         con.commit()
         con.close()
+
+
+def ban_ips(ips):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    for ip in ips:
+        sql_code = ('''INSERT INTO Banned_IPs(IP)
+                    VALUES(?);''')
+        args = (ip,)
+        cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def unban_ips(ips):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    for ip in ips:
+        sql_code = ('''DELETE FROM Banned_IPs WHERE IP = ?;''')
+        args = (ip,)
+        cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def is_ip_banned(ip):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    sql_code = ('''SELECT * FROM Banned_IPs WHERE IP = ?;''')
+    args = (ip,)
+    cur.execute(sql_code, args)
+    search_result = cur.fetchone()
+    con.close()
+
+    if search_result == None:
+        return False
+    else:
+        return True
+
+
+def ban_users(usernames):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    for username in usernames:
+        sql_code = ('''UPDATE Users
+                    SET Banned = ?
+                    WHERE Username = ?;''')
+        args = (1, username,)
+        cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def unban_users(usernames):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    for username in usernames:
+        sql_code = ('''UPDATE Users
+                    SET Banned = ?
+                    WHERE Username = ?;''')
+        args = (0, username,)
+        cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def ban_room_names(names):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    for name in names:
+        sql_code = ('''INSERT INTO Banned_Room_Names(Room)
+                    VALUES(?);''')
+        args = (name,)
+        cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def unban_room_names(names):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    for name in names:
+        sql_code = ('''DELETE FROM Banned_Room_Names WHERE Room = ?;''')
+        args = (name,)
+        cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def is_room_name_banned(name):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    sql_code = ('''SELECT * FROM Banned_Room_Names WHERE Room = ?;''')
+    args = (name,)
+    cur.execute(sql_code, args)
+    search_result = cur.fetchone()
+    con.close()
+
+    if search_result == None:
+        return False
+    else:
+        return True

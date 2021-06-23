@@ -3,7 +3,7 @@ This is an alternative server software using the soulseek protocol.
 
 Most core features work (private rooms are buggy). Not tested at scale. Not production ready.
 
-To run server, first run setup.py to create databases, then run the main.py.
+To run server, first run make_db.py to create databases, then run the main.py.
 
 ✅ Search users files
 
@@ -15,9 +15,11 @@ To run server, first run setup.py to create databases, then run the main.py.
 
 ❌ Private Chat rooms
 
-❌ Server Settings
+✅ Server Settings
 
-❌ Admin Commands
+✅ Admin Commands
+
+❌ Admin GUI or CLI Interface
 
 ❌ Protection from abusive users
 

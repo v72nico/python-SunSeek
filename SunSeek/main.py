@@ -2,7 +2,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.task import LoopingCall
 
-from db import login_user, user_exist, save_private_message, get_saved_private_messages, delete_private_message
+from db import login_user, user_exist, save_private_message, get_saved_private_messages, delete_private_message, ban_ips, unban_ips, is_ip_banned, ban_users, unban_users, ban_room_names, unban_room_names, is_room_name_banned
 from decode import parse_data
 from encode import encode_data
 from utils import get_time, rand_int, get_random_lst_items, is_user_connectable
@@ -16,9 +16,11 @@ class slskProtocol(Protocol):
 
     def connectionMade(self):
         self.peer = self.transport.getPeer()
+        self.ip = self.peer.host
+        if is_ip_banned(self.ip):
+            self.transport.loseConnection()
 
         self.username = 'null'
-        self.ip = self.peer.host
         self.logged_in = False
         self.port = 2234  # default listening port
         self.use_obfuscation = False
@@ -154,7 +156,12 @@ class slskProtocol(Protocol):
                     self.login(msg)
                 except Exception as e:
                     print('Error logging in ', e)
-                    print_exception()
+
+            elif msg.msg_code == 58:
+                try:
+                    self.admin_command(msg)
+                except Exception as e:
+                    print('Error in Admin Command ', e)
 
             elif self.logged_in == True:
                 try:
@@ -163,11 +170,9 @@ class slskProtocol(Protocol):
                     print(f"Error responding to msg. Msg Code: {msg.msg_code}, Error: ", e)
 
     def login(self, msg):
-        # TODO implement private server function
         self.username = msg.username
         self.logged_in = False
         # Trying to keep password temporary by not sticking it user data
-        # TODO what if strings too long
         password = msg.password
         login_result = login_user(self.username, password, self.factory.settings['private_server'])
 
@@ -175,12 +180,13 @@ class slskProtocol(Protocol):
             # Check if user already logged in and kick if the same user
             if msg.username in self.factory.users:
                 user = self.factory.users[msg.username]
-                send_msg = send_msg = encode_data(41)
+                send_msg = encode_data(41)
                 user.transport.write(send_msg)
                 user.transport.loseConnection()
 
             # Set privilege
-            if login_result[1] > 0:
+            privilege_status = login_result[1]
+            if privilege_status > 0:
                 self.privileged = True
                 if self.username not in self.factory.privileged:
                     self.factory.privileged.append(self.username)
@@ -209,7 +215,8 @@ class slskProtocol(Protocol):
             self.privileged_users()
 
         elif login_result[0] == 'failure':
-            send_msg = encode_data(1, 'Bad Password')
+            reason = login_result[1]
+            send_msg = encode_data(1, reason)
             self.transport.write(send_msg)
 
     def set_wait_port(self, msg):
@@ -325,19 +332,20 @@ class slskProtocol(Protocol):
 
         # If room dosent exists
         else:
-            try:
-                self.factory.rooms[msg.room] = Chatroom(msg.room, msg.private)
-            except AttributeError:
-                self.factory.rooms[msg.room] = Chatroom(msg.room, False)
-            room = self.factory.rooms[msg.room]
-            self.joined_rooms.append(msg.room)
-            room.users.append(self.username)
-            if room.private == True:
-                room.owner = self.username
-                send_msg = encode_data(14, msg.room, 1, self.username, 1, self.status, 1, self.avgspeed, ['64', self.uploadnum], self.files, self.dirs, 1, 1, 1, self.country, self.username, 0)
-            else:
-                send_msg = encode_data(14, msg.room, 1, self.username, 1, self.status, 1, self.avgspeed, ['64', self.uploadnum], self.files, self.dirs, 1, 1, 1, self.country)
-            self.transport.write(send_msg)
+            if not is_room_name_banned(msg.room):
+                try:
+                    self.factory.rooms[msg.room] = Chatroom(msg.room, msg.private)
+                except AttributeError:
+                    self.factory.rooms[msg.room] = Chatroom(msg.room, False)
+                room = self.factory.rooms[msg.room]
+                self.joined_rooms.append(msg.room)
+                room.users.append(self.username)
+                if room.private == True:
+                    room.owner = self.username
+                    send_msg = encode_data(14, msg.room, 1, self.username, 1, self.status, 1, self.avgspeed, ['64', self.uploadnum], self.files, self.dirs, 1, 1, 1, self.country, self.username, 0)
+                else:
+                    send_msg = encode_data(14, msg.room, 1, self.username, 1, self.status, 1, self.avgspeed, ['64', self.uploadnum], self.files, self.dirs, 1, 1, 1, self.country)
+                self.transport.write(send_msg)
 
     def leave_room(self, msg):
         if msg.room in self.factory.rooms:
@@ -423,8 +431,49 @@ class slskProtocol(Protocol):
             self.transport.write(send_msg)
 
     def admin_command(self, msg):
-        # TODO IDK what to do (maybe add privilege, and global messages, query users)
-        pass
+        if self.factory.settings['admin_password'] != None:
+            if msg.password == self.factory.settings['admin_password']:
+                if msg.cmd_list[0] == 'Ban_IPs':
+                    ban_ips(msg.cmd_list[1:])
+                    for user in self.factory.users:
+                        if user.ip in msg.cmd_list[1:]:
+                            user.transport.loseConnection()
+
+                if msg.cmd_list[0] == 'Unban_IPs':
+                    unban_ips(msg.cmd_list[1:])
+
+                if msg.cmd_list[0] == 'Ban_Users':
+                    ban_users(msg.cmd_list[1:])
+                    for user in self.factory.users:
+                        if user.username in msg.cmd_list[1:]:
+                            user.transport.loseConnection()
+
+                if  msg.cmd_list[0] == 'Unban_Users':
+                    unban_users(msg.cmd_list[1:])
+
+                if msg.cmd_list[0] == 'Delete_Rooms':
+                    for room in self.factory.rooms:
+                        if room.name in msg.cmd_list[1:]:
+                            send_msg = encode_data(15, room.name)
+                            for name in room.users:
+                                self.factory.users[name].transport.write(send_msg)
+                            del self.factory.rooms[room.name]
+
+                if msg.cmd_list[0] == 'Ban_Room_Names':
+                    ban_room_names(msg.cmd_list[1:])
+                    for room in self.factory.rooms:
+                        if room.name in msg.cmd_list[1:]:
+                            send_msg = encode_data(15, room.name)
+                            for name in room.users:
+                                self.factory.users[name].transport.write(send_msg)
+                            del self.factory.rooms[room.name]
+
+                if msg.cmd_list[0] == 'Unban_Room_Names':
+                    unban_room_names(msg.cmd_list[1:])
+
+                if msg.cmd_list[0] == 'Add_User':
+                    # False to bypass private server lock
+                    login_user(msg.cmd_list[1], msg.cmd_list[2], False)
 
     def room_list(self, msg):
         rooms = self.factory.rooms
