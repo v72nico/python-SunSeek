@@ -1,6 +1,6 @@
 from twisted.internet import reactor
 from main import slskFactory
-from db import get_port
+from config import get_port
 
 
 def run_server(port):
@@ -10,5 +10,5 @@ def run_server(port):
 
 
 if __name__ == "__main__":
-    port = get_ports()
+    port = get_port()
     run_server(port)

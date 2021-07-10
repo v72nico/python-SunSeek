@@ -1,10 +1,11 @@
 from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.task import LoopingCall
 
-from db import login_user, user_exist, save_private_message, get_saved_private_messages, delete_private_message, ban_ips, unban_ips, is_ip_banned, ban_users, unban_users, ban_room_names, unban_room_names, is_room_name_banned
+from db import login_user, user_exist, save_private_message, get_saved_private_messages, delete_private_message, ban_ips, unban_ips, is_ip_banned, ban_users, unban_users, \
+ban_room_names, unban_room_names, is_room_name_banned, give_privilege, update_privilege
 from decode import parse_data
 from encode import encode_data
-from utils import get_time, rand_int, get_random_lst_items, is_user_connectable
+from utils import get_time, rand_int, get_random_lst_items, is_user_connectable, days_to_secs
 from rooms import Chatroom
 from config import get_port, get_config_data
 
@@ -91,64 +92,64 @@ class slskProtocol(Protocol):
         print(reason)
 
     def dataReceived(self, data):
+        dispatcher = {
+                    '2': self.set_wait_port,
+                    '3': self.get_peer_address,
+                    '5': self.add_user,
+                    '6': self.remove_user,
+                    '7': self.get_user_status,
+                    '13': self.say_chatroom,
+                    '14': self.join_room,
+                    '15': self.leave_room,
+                    '18': self.connect_to_peer,
+                    '22': self.message_user,
+                    '23': self.message_acked,
+                    '26': self.file_search,
+                    '28': self.set_status,
+                    '35': self.shared_folders_files,
+                    '36': self.get_user_stats,
+                    '42': self.user_search,
+                    '51': self.add_thing_i_like,
+                    '52': self.remove_thing_i_like,
+                    '54': self.recommendations,
+                    '56': self.global_recommendations,
+                    '57': self.user_interests,
+                    '58': self.admin_command,
+                    '64': self.room_list,
+                    '71': self.have_no_parent,
+                    '92': self.check_privileges,
+                    '100': self.accept_children,
+                    '103': self.wishlist_search,
+                    '110': self.similar_users,
+                    '111': self.item_recommendations,
+                    '112': self.item_similar_users,
+                    '116': self.room_ticker_set,
+                    '117': self.add_thing_i_hate,
+                    '118': self.remove_thing_i_hate,
+                    '120': self.room_search,
+                    '121': self.send_upload_speed,
+                    '123': self.give_privileges,
+                    '126': self.branch_level,
+                    '127': self.branch_root,
+                    '129': self.child_depth,
+                    '134': self.private_room_add_user,
+                    '135': self.private_room_remove_user,
+                    '136': self.private_room_dismember,
+                    '137': self.private_room_disown,
+                    '141': self.private_room_toggle,
+                    '142': self.change_password,
+                    '143': self.private_room_add_operator,
+                    '144': self.private_room_remove_operator,
+                    '149': self.message_users,
+                    '150': self.join_public_room,
+                    '151': self.leave_public_room,
+                    '1001': self.cant_connect_to_peer
+        }
+
         msgs = parse_data(data, self.factory.settings['max_msg_size'])
         for msg in msgs:
             print(self.username)
             print(msg.__dict__)
-
-            dispatcher = {
-                        '2': self.set_wait_port,
-                        '3': self.get_peer_address,
-                        '5': self.add_user,
-                        '6': self.remove_user,
-                        '7': self.get_user_status,
-                        '13': self.say_chatroom,
-                        '14': self.join_room,
-                        '15': self.leave_room,
-                        '18': self.connect_to_peer,
-                        '22': self.message_user,
-                        '23': self.message_acked,
-                        '26': self.file_search,
-                        '28': self.set_status,
-                        '35': self.shared_folders_files,
-                        '36': self.get_user_stats,
-                        '42': self.user_search,
-                        '51': self.add_thing_i_like,
-                        '52': self.remove_thing_i_like,
-                        '54': self.recommendations,
-                        '56': self.global_recommendations,
-                        '57': self.user_interests,
-                        '58': self.admin_command,
-                        '64': self.room_list,
-                        '71': self.have_no_parent,
-                        '92': self.check_privileges,
-                        '100': self.accept_children,
-                        '103': self.wishlist_search,
-                        '110': self.similar_users,
-                        '111': self.item_recommendations,
-                        '112': self.item_similar_users,
-                        '116': self.room_ticker_set,
-                        '117': self.add_thing_i_hate,
-                        '118': self.remove_thing_i_hate,
-                        '120': self.room_search,
-                        '121': self.send_upload_speed,
-                        '123': self.give_privileges,
-                        '126': self.branch_level,
-                        '127': self.branch_root,
-                        '129': self.child_depth,
-                        '134': self.private_room_add_user,
-                        '135': self.private_room_remove_user,
-                        '136': self.private_room_dismember,
-                        '137': self.private_room_disown,
-                        '141': self.private_room_toggle,
-                        '142': self.change_password,
-                        '143': self.private_room_add_operator,
-                        '144': self.private_room_remove_operator,
-                        '149': self.message_users,
-                        '150': self.join_public_room,
-                        '151': self.leave_public_room,
-                        '1001': self.cant_connect_to_peer
-            }
 
             if msg.msg_code == 1:
                 try:
@@ -213,6 +214,7 @@ class slskProtocol(Protocol):
 
             self.privileged_users()
 
+        # TODO Max login attempts
         elif login_result[0] == 'failure':
             reason = login_result[1]
             send_msg = encode_data(1, reason)
@@ -233,7 +235,7 @@ class slskProtocol(Protocol):
             self.transport.write(send_msg)
 
     def add_user(self, msg):
-        # TODO somethings wrong
+        # TODO somethings wrong because user should be removed from list at exit
         if msg.username in self.factory.users:
             user = self.factory.users[msg.username]
             send_msg = encode_data(5, user.username, True, user.status, user.avgspeed, ['64', user.uploadnum], user.files, user.dirs, user.country)
@@ -471,8 +473,12 @@ class slskProtocol(Protocol):
                     unban_room_names(msg.cmd_list[1:])
 
                 if msg.cmd_list[0] == 'Add_User':
-                    # False to bypass private server lock
+                    # 3rd arg False to bypass private server lock
                     login_user(msg.cmd_list[1], msg.cmd_list[2], False)
+
+                if msg.cmd_list[0] == 'Give_Privilege':
+                    time = days_to_secs(msg.cmd_list[2])
+                    give_privilege(msg.cmd_list[1], time)
 
     def room_list(self, msg):
         rooms = self.factory.rooms
@@ -579,8 +585,9 @@ class slskProtocol(Protocol):
         self.send_stats_update()
 
     def give_privileges(self, msg):
-        # TODO
-        pass
+        if user_exist(msg.username):
+            time = days_to_secs(msg.days)
+            gift_privilege(self.username, msg.username, time)
 
     def branch_level(self, msg):
         self.var_branch_level = msg.branch_level
@@ -832,11 +839,18 @@ class slskFactory(Factory):
         self.settings = get_config_data()
         self.greeting = self.settings['greeting']
 
+        # TODO change to loop hourly
+        LoopingCall(self.manage_privileges).start(600)
+
     def buildProtocol(self, addr):
         if len(self.users) < self.settings['max_users']:
             return slskProtocol(self)
 
     def manage_privileges(self):
-        # TODO looping call to check and update privilleges, and privilege list, and update time remaining in database
+        # looping call to check and update privilleges, and privilege list, and update time remaining in database
         # send upate of msg code 69
-        pass
+        self.privileged = update_privilege()
+        privileged = self.privileged
+        send_msg = encode_data(69, len(privileged), ['str_lst', privileged])
+        for user in self.users.values():
+            user.transport.write(send_msg)

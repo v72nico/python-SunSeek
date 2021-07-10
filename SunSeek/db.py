@@ -283,3 +283,56 @@ def is_room_name_banned(name):
         return False
     else:
         return True
+
+
+def give_privilege(username, time):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    sql_code = ('''UPDATE Users
+                SET Privileged = Privileged + ?
+                WHERE Username = ?;''')
+    args = (time, username,)
+    cur.execute(sql_code, args)
+    con.commit()
+    con.close()
+
+
+def gift_privilege(sender_username, username, time):
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    sql_code = ('''SELECT * FROM Users WHERE Username = ?;''')
+    args = (sender_username,)
+    cur.execute(sql_code, args)
+    search_result = cur.fetchone()
+    if search_result[3] > time:
+        sql_code = ('''UPDATE Users
+                    SET Privileged = Privileged + ?
+                    WHERE Username = ?;''')
+        args = (time, username,)
+        cur.execute(sql_code, args)
+        sql_code = ('''UPDATE Users
+                    SET Privileged = Privileged - ?
+                    WHERE Username = ?;''')
+        args = (time, sender_username,)
+        cur.execute(sql_code, args)
+
+
+def update_privilege():
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+    sql_code = ('''UPDATE Users
+                SET Privileged = Privileged - 3600
+                WHERE Privileged > 3600;''')
+    cur.execute(sql_code)
+    sql_code = ('''UPDATE Users
+                SET Privileged = 0
+                WHERE Privileged < 3600;''')
+    cur.execute(sql_code)
+    con.commit()
+
+    sql_code = ('''SELECT Username FROM Users WHERE Privileged > 0;''')
+    cur.execute(sql_code)
+    search_result = cur.fetchall()
+    con.close()
+
+    return search_result

@@ -1,19 +1,6 @@
 from random import getrandbits, sample
 from time import time
-import json
-from urllib.request import urlopen
 import socket
-import linecache
-import sys
-
-def get_country(ip):
-    try:
-        with urlopen(f"https://ipapi.co/{ip}/json/") as url:
-            data = json.loads(url.read().decode())
-            print(data['country_code'])
-            return data['country_code']
-    except Exception:
-        return 'ZZ'
 
 
 def rand_int():
@@ -22,6 +9,11 @@ def rand_int():
 
 def get_time():
     return int(time())
+
+
+def days_to_secs(days):
+    secs = days * 86400
+    return secs
 
 
 def get_random_lst_items(number, original_lst):
