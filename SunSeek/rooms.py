@@ -1,6 +1,5 @@
 class Chatroom():
     def __init__(self, name, private):
-        # TODO get saved tickers
         self.name = name
         self.private = private
         self.users = []

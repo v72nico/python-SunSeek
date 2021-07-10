@@ -1,4 +1,3 @@
-from twisted.internet import reactor
 from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.task import LoopingCall
 
@@ -841,14 +840,3 @@ class slskFactory(Factory):
         # TODO looping call to check and update privilleges, and privilege list, and update time remaining in database
         # send upate of msg code 69
         pass
-
-
-def run_server(port):
-    """Runs the server"""
-    reactor.listenTCP(port, slskFactory())
-    reactor.run()
-
-
-if __name__ == "__main__":
-    port = get_port()
-    run_server(port)
