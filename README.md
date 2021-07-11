@@ -23,6 +23,7 @@ Examples:
 
 In the config file config.ini various server settings can be changed. If a server is private users cannot join unless an account is created for them with the admin command Add_User.
 
+<<<<<<< HEAD
 - ✅ Search users files
 - ✅ PM users
 - ✅ Public Chat rooms
@@ -33,3 +34,15 @@ In the config file config.ini various server settings can be changed. If a serve
 - ❌ Private Chat rooms
 - ❌ Protection from abusive users
 - ❌ Recommendations
+=======
+✅ Search users files
+✅ PM users
+✅ Public Chat rooms
+✅ View User Info
+✅ Server Settings
+✅ Admin Commands
+✅ Admin CLI Interface
+❌ Private Chat rooms
+❌ Protection from abusive users
+❌ Recommendations
+>>>>>>> 14800fb4f1954181e8794ba4b9fa5b0e8cdc5712
