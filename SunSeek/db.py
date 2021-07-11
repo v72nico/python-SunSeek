@@ -1,5 +1,5 @@
 import sqlite3
-from utils import get_time
+from utils import get_time, hash_sha256
 
 def create_db():
     '''Creates database'''
@@ -46,8 +46,6 @@ def create_db():
     con.close()
 
 
-#TODO AT SCALE this needs to be a seperate thread with QUEUE all db (Acctually maybe not because twisted is only one thread)
-#TODO dont store passwords in plain text use sha-256
 def login_user(username, password, private_server):
     '''Sqlite function for managing signing in and creating new user entrys in the database
 
@@ -55,6 +53,8 @@ def login_user(username, password, private_server):
     password is correct then the string 'success' is returned. If the password does not
     match the string 'failure' is sent
     '''
+
+    hashed_password = hash_sha256(password)
 
     con = sqlite3.connect('sunseek.db')
     cur = con.cursor()
@@ -67,20 +67,20 @@ def login_user(username, password, private_server):
     if search_result == None and private_server == False:
         sql_code = ('''INSERT INTO Users(Username,Password,Privileged,Banned)
                     VALUES(?,?,0,0);''')
-        args = (username, password,)
+        args = (username, hashed_password,)
         cur.execute(sql_code, args)
         con.commit()
         con.close()
         return ['success', 0]
 
-    elif search_result[2] == password:
+    elif search_result[2] == hashed_password:
         con.close()
         if search_result[4] == 0:
             return ['success', search_result[3]]
         elif search_result[4] == 1:
             return ['failure', 'Banned']
 
-    elif search_result[2] != password:
+    elif search_result[2] != hashed_password:
         con.close()
         return ['failure', 'Wrong Password']
 
@@ -181,6 +181,21 @@ def save_ticker(username, room, ticker):
         cur.execute(sql_code, args)
         con.commit()
         con.close()
+
+
+def change_password_db(username, password):
+    hashed_password = hash_sha256(password)
+
+    con = sqlite3.connect('sunseek.db')
+    cur = con.cursor()
+
+    sql_code = ('''UPDATE Users
+                SET Password = ?
+                WHERE Username = ?;''')
+    args = (hashed_password, username,)
+    cur.execute(sql_code, args)
+    con.commit()
+    con.close()
 
 
 def ban_ips(ips):

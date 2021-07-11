@@ -1,6 +1,12 @@
 from random import getrandbits, sample
 from time import time
 import socket
+from hashlib import sha256
+
+
+def hash_sha256(item):
+    encoded_item = item.encode('utf-8')
+    return sha256(encoded_item).hexdigest()
 
 
 def rand_int():
@@ -20,6 +26,7 @@ def get_random_lst_items(number, original_lst):
     if len(original_lst) < number:
         number = len(original_lst)
     return sample(original_lst, number)
+
 
 def is_user_connectable(ip, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
