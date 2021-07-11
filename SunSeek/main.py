@@ -1,8 +1,9 @@
 from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.task import LoopingCall
+from twisted.internet.threads import deferToThread
 
 from db import login_user, user_exist, save_private_message, get_saved_private_messages, delete_private_message, ban_ips, unban_ips, is_ip_banned, ban_users, unban_users, \
-ban_room_names, unban_room_names, is_room_name_banned, give_privilege, update_privilege
+ban_room_names, unban_room_names, is_room_name_banned, give_privilege, update_privilege, change_password_db
 from decode import parse_data
 from encode import encode_data
 from utils import get_time, rand_int, get_random_lst_items, is_user_connectable, days_to_secs
@@ -694,8 +695,9 @@ class slskProtocol(Protocol):
         self.transport.write(send_msg)
 
     def change_password(self, msg):
-        # TODO add db command to change password
-        pass
+        change_password_db(self.username, msg.password)
+        send_msg = encode_data(142, msg.password)
+        self.transport.write(send_msg)
 
     def private_room_add_operator(self, msg):
         if msg.room in self.factory.rooms and msg.operator in self.factory.users:
@@ -734,11 +736,12 @@ class slskProtocol(Protocol):
                     self.send_private_room_update(msg.room)
 
     def message_users(self, msg):
-        # TODO Save messages for later
         send_msg = encode_data(22, rand_int(), get_time(), self.username, msg.message, True)
         for name in msg.username_lst:
             if name in self.factory.users:
                 self.factory.users[name].transport.write(send_msg)
+            elif user_exist(name):
+                save_private_message(msg.message, self.username, name, get_time(), rand_int(), self.factory.settings['max_pms'])
 
     def join_public_room(self, msg):
         if self.username not in self.factory.public_room_users:
@@ -749,8 +752,14 @@ class slskProtocol(Protocol):
             self.factory.public_room_users.remove(self.username)
 
     def cant_connect_to_peer(self, msg):
-        # TODO maybe seperate thread to check firewall status is_user_connectable()
-        pass
+        if msg.username in self.factory.users:
+            ip = self.factory.users[msg.username].ip
+            port = self.factory.users[msg.username].port
+            user_connectable = deferToThread(is_user_connectable, ip, port)
+            self_connectable = deferToThread(is_user_connectable, self.ip, self.port)
+            if not user_connectable and not self_connectable:
+                send_msg = encode_data(1001, msg.token, msg.username)
+                self.transport.write(send_msg)
 
     def privileged_users(self):
         privileged = self.factory.privileged
