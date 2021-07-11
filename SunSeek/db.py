@@ -77,7 +77,7 @@ def login_user(username, password, private_server):
         con.close()
         if search_result[4] == 0:
             return ['success', search_result[3]]
-        if search_result[4] == 1:
+        elif search_result[4] == 1:
             return ['failure', 'Banned']
 
     elif search_result[2] != password:

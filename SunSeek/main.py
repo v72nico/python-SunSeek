@@ -199,7 +199,7 @@ class slskProtocol(Protocol):
             # Start repeating loopingcalls
             LoopingCall(self.possible_parents).start(60)
 
-            send_msg = encode_data(1, self.factory.greeting, ['ip', self.ip], ['hash', password])
+            send_msg = encode_data(1, True, self.factory.greeting, ['ip', self.ip], ['hash', password])
             self.transport.write(send_msg)
 
             # Send private messages from when offline
@@ -217,7 +217,7 @@ class slskProtocol(Protocol):
         # TODO Max login attempts
         elif login_result[0] == 'failure':
             reason = login_result[1]
-            send_msg = encode_data(1, reason)
+            send_msg = encode_data(1, False, reason)
             self.transport.write(send_msg)
 
     def set_wait_port(self, msg):
@@ -436,7 +436,7 @@ class slskProtocol(Protocol):
             if msg.password == self.factory.settings['admin_password']:
                 if msg.cmd_list[0] == 'Ban_IPs':
                     ban_ips(msg.cmd_list[1:])
-                    for user in self.factory.users:
+                    for user in self.factory.users.values():
                         if user.ip in msg.cmd_list[1:]:
                             user.transport.loseConnection()
 
@@ -445,15 +445,15 @@ class slskProtocol(Protocol):
 
                 if msg.cmd_list[0] == 'Ban_Users':
                     ban_users(msg.cmd_list[1:])
-                    for user in self.factory.users:
-                        if user.username in msg.cmd_list[1:]:
-                            user.transport.loseConnection()
+                    for name in self.factory.users:
+                        if name in msg.cmd_list[1:]:
+                            self.factory.users[name].transport.loseConnection()
 
                 if  msg.cmd_list[0] == 'Unban_Users':
                     unban_users(msg.cmd_list[1:])
 
                 if msg.cmd_list[0] == 'Delete_Rooms':
-                    for room in self.factory.rooms:
+                    for room in self.factory.rooms.values():
                         if room.name in msg.cmd_list[1:]:
                             send_msg = encode_data(15, room.name)
                             for name in room.users:
@@ -462,7 +462,7 @@ class slskProtocol(Protocol):
 
                 if msg.cmd_list[0] == 'Ban_Room_Names':
                     ban_room_names(msg.cmd_list[1:])
-                    for room in self.factory.rooms:
+                    for room in self.factory.rooms.values():
                         if room.name in msg.cmd_list[1:]:
                             send_msg = encode_data(15, room.name)
                             for name in room.users:
@@ -477,7 +477,7 @@ class slskProtocol(Protocol):
                     login_user(msg.cmd_list[1], msg.cmd_list[2], False)
 
                 if msg.cmd_list[0] == 'Give_Privilege':
-                    time = days_to_secs(msg.cmd_list[2])
+                    time = days_to_secs(int(msg.cmd_list[2]))
                     give_privilege(msg.cmd_list[1], time)
 
     def room_list(self, msg):
@@ -839,8 +839,7 @@ class slskFactory(Factory):
         self.settings = get_config_data()
         self.greeting = self.settings['greeting']
 
-        # TODO change to loop hourly
-        LoopingCall(self.manage_privileges).start(600)
+        #LoopingCall(self.manage_privileges).start(3600, False)
 
     def buildProtocol(self, addr):
         if len(self.users) < self.settings['max_users']:
@@ -849,6 +848,7 @@ class slskFactory(Factory):
     def manage_privileges(self):
         # looping call to check and update privilleges, and privilege list, and update time remaining in database
         # send upate of msg code 69
+        # TODO broken
         self.privileged = update_privilege()
         privileged = self.privileged
         send_msg = encode_data(69, len(privileged), ['str_lst', privileged])
